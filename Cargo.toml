@@ -62,6 +62,10 @@ pe64 = ["alloc", "endian_fd"]
 archive = ["alloc"]
 pe_pkcs7 = ["der", "pkcs7"]
 
+[[example]]
+name = "manipulate_pe_signatures"
+required-features = [ "pe_pkcs7" ]
+
 [badges.travis-ci]
 branch = "master"
 repository = "m4b/goblin"
