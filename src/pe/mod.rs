@@ -25,6 +25,8 @@ use crate::container;
 use crate::error;
 use crate::strtab;
 
+use scroll::{ctx, Pwrite};
+
 use log::debug;
 
 #[derive(Debug)]
@@ -264,6 +266,26 @@ impl<'a> PE<'a> {
             exception_data,
             certificates,
         })
+    }
+}
+
+impl<'a> ctx::TryIntoCtx<scroll::Endian> for PE<'a> {
+    type Error = error::Error;
+
+    fn try_into_ctx(self, bytes: &mut [u8], ctx: scroll::Endian) -> Result<usize, Self::Error> {
+        let offset = &mut 0;
+        bytes.gwrite_with(self.header, offset, ctx)?;
+        // sections table
+        for section in self.sections {
+            bytes.gwrite_with(section, offset, ctx)?;
+        }
+        // code: where is it?
+        // imports
+        for import in self.imports {
+            bytes.gwrite_with(import, offset, ctx)?;
+        }
+        // data
+        Ok(self.size)
     }
 }
 
