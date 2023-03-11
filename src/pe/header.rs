@@ -3,11 +3,11 @@ use crate::pe::{optional_header, section_table, symbol};
 use crate::strtab;
 use alloc::vec::Vec;
 use log::debug;
-use scroll::{IOread, IOwrite, Pread, Pwrite, SizeWith};
+use scroll::{ctx, IOread, IOwrite, Pread, Pwrite, SizeWith};
 
 /// DOS header present in all PE binaries
 #[repr(C)]
-#[derive(Debug, PartialEq, Copy, Clone, Default)]
+#[derive(Debug, PartialEq, Copy, Clone, Default, Pwrite)]
 pub struct DosHeader {
     /// Magic number: 5a4d
     pub signature: u16,
@@ -212,6 +212,21 @@ impl Header {
             coff_header,
             optional_header,
         })
+    }
+}
+
+impl ctx::TryIntoCtx<scroll::Endian> for Header {
+    type Error = error::Error;
+
+    fn try_into_ctx(self, bytes: &mut [u8], ctx: scroll::Endian) -> Result<usize, Self::Error> {
+        let offset = &mut 0;
+        bytes.gwrite_with(self.dos_header, offset, ctx)?;
+        bytes.gwrite_with(self.signature, offset, scroll::LE)?;
+        bytes.gwrite_with(self.coff_header, offset, ctx)?;
+        if let Some(opt_header) = self.optional_header {
+            bytes.gwrite_with(opt_header, offset, ctx)?;
+        }
+        Ok(*offset)
     }
 }
 
