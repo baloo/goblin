@@ -273,18 +273,60 @@ impl<'a> ctx::TryIntoCtx<scroll::Endian> for PE<'a> {
     type Error = error::Error;
 
     fn try_into_ctx(self, bytes: &mut [u8], ctx: scroll::Endian) -> Result<usize, Self::Error> {
-        let offset = &mut 0;
-        bytes.gwrite_with(self.header, offset, ctx)?;
-        // sections table
+        let mut offset = 0;
+        bytes.gwrite_with(self.header, &mut offset, ctx)?;
+        // sections table and data
         for section in self.sections {
-            bytes.gwrite_with(section, offset, ctx)?;
+            // for size size_of_raw_data
+            // if < virtual_size, pad with 0
+            // align on a boundary as per file alignement field
+            // todo: figure out section alignement restrictions wrt to architecture
+            // Write section data first to avoid the final consumption.
+            let section_data = section.data(&self.bytes)?
+                .ok_or_else(|| Self::Error::Malformed(
+                            format!("Section data `{}` is malformed",
+                                section.name()
+                                .unwrap_or("unknown name")))
+                )?;
+            let file_section_offset = usize::try_from(section.pointer_to_raw_data)
+                .map_err(|_| Self::Error::Malformed(
+                        format!("Section `{}`'s pointer to raw data does not fit in platform `usize`", section.name().unwrap_or("unknown name"))
+                ))?;
+            bytes.pwrite(section_data, file_section_offset)?;
+            bytes.gwrite_with(section, &mut offset, ctx)?;
         }
-        // code: where is it?
-        // imports
+        // COFF Symbol Table
+        // Auxiliary Symbol Records
+        // COFF String Table
+        {
+            // Jump offset to COFF Symbol Table, so we can jump to String Table.
+            let coff_sym_offset = usize::try_from(self.header.coff_header.pointer_to_symbol_table)
+                .map_err(|_| Self::Error::Malformed(
+                        format!("COFF Header's symbol table offset does not fit in platform `usize`")
+                ))?;
+            offset = coff_sym_offset;
+            bytes.gwrite_with(self.header.coff_header.symbols(self.bytes)?, &mut offset, ctx)?;
+            let coff_strings = self.header.coff_header.strings(self.bytes)?;
+
+            // FIXME: this can truncate a wrong length
+            // should we catch this earlier in the signature of `len` directly?
+            bytes.gwrite_with(coff_strings.len() as u32, &mut offset, ctx)?;
+            bytes.gwrite(coff_strings.bytes, &mut offset)?; 
+        }
+        // Attribute Certificate Table
+        // Delay-Load Import Tables
         for import in self.imports {
-            bytes.gwrite_with(import, offset, ctx)?;
+            bytes.gwrite_with(import, &mut offset, ctx)?;
         }
-        // data
+        // .debug
+        // .edata
+        // .idata
+        // .pdata
+        // .reloc
+        // .tls
+        // The Load Configuration Structure
+        // .rsrc
+        // .sxdata
         Ok(self.size)
     }
 }
