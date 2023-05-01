@@ -15,7 +15,7 @@ if_alloc! {
 /// with your choice of delimiter. Please be careful.
 pub struct Strtab<'a> {
     delim: ctx::StrCtx,
-    bytes: &'a [u8],
+    pub bytes: &'a [u8],
     #[cfg(feature = "alloc")]
     strings: Vec<(usize, &'a str)>,
 }
@@ -32,6 +32,12 @@ impl<'a> Strtab<'a> {
     /// See https://github.com/m4b/goblin/pull/275#issue-660364025
     pub fn new(bytes: &'a [u8], delim: u8) -> Self {
         Self::from_slice_unparsed(bytes, 0, bytes.len(), delim)
+    }
+
+    /// Returns the length of this `Strtab` a
+    /// byte string.
+    pub fn len(&self) -> usize {
+        self.bytes.len()
     }
 
     /// Creates a `Strtab` directly without bounds check and without parsing it.
