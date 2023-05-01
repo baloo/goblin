@@ -79,6 +79,22 @@ impl SectionTable {
         Ok(table)
     }
 
+    pub fn data(
+        &self,
+        pe_bytes: &[u8]
+    ) -> error::Result<Option<&[u8]>> {
+        let section_start: usize = self.virtual_address.try_into()
+            .map_err(|_| Error::Malformed(format!(
+                        "Virtual address cannot fit in platform `usize`")))?;
+
+        assert!(self.virtual_size <= self.size_of_raw_data);
+        let section_end: usize = section_start + usize::try_from(self.virtual_size)
+            .map_err(|_| Error::Malformed(format!(
+                        "Virtual size cannot fit in platform `usize`")))?;
+
+        Ok(pe_bytes.get(section_start..section_end))
+    }
+
     pub fn name_offset(&self) -> error::Result<Option<usize>> {
         // Based on https://github.com/llvm-mirror/llvm/blob/af7b1832a03ab6486c42a40d21695b2c03b2d8a3/lib/Object/COFFObjectFile.cpp#L1054
         if self.name[0] == b'/' {
