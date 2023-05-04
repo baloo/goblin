@@ -79,9 +79,9 @@ impl SectionTable {
         Ok(table)
     }
 
-    pub fn data(
-        &self,
-        pe_bytes: &[u8]
+    pub fn data<'a, 'b: 'a>(
+        &'a self,
+        pe_bytes: &'b [u8]
     ) -> error::Result<Option<&[u8]>> {
         let section_start: usize = self.virtual_address.try_into()
             .map_err(|_| Error::Malformed(format!(

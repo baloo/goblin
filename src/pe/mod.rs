@@ -313,20 +313,29 @@ impl<'a> ctx::TryIntoCtx<scroll::Endian> for PE<'a> {
             bytes.gwrite_with(coff_strings.len() as u32, &mut offset, ctx)?;
             bytes.gwrite(coff_strings.bytes, &mut offset)?; 
         }
-        // Attribute Certificate Table
-        // Delay-Load Import Tables
-        for import in self.imports {
-            bytes.gwrite_with(import, &mut offset, ctx)?;
+        if let Some(opt_header) = self.header.optional_header {
+            // Takes care of:
+            // - export table (.edata)
+            // - import table (.idata)
+            // - bound import table
+            // - import address table
+            // - delay import tables
+            // - resource table (.rsrc)
+            // - exception table (.pdata)
+            // - attribute certificate table
+            // - base relocation table (.reloc)
+            // - debug table (.debug)
+            // - load config table
+            // - tls table (.tls)
+            // - architecture (reserved, 0 for now)
+            // - global ptr is a "empty" data directory (header-only)
+            // - clr runtime header (.cormeta is object-only)
+            for opt_dd in opt_header.data_directories.data_directories {
+                if let Some(dd) = opt_dd {
+                    bytes.pwrite(dd.data(&self.bytes)?, dd.virtual_address.try_into()?)?;
+                }
+            }
         }
-        // .debug
-        // .edata
-        // .idata
-        // .pdata
-        // .reloc
-        // .tls
-        // The Load Configuration Structure
-        // .rsrc
-        // .sxdata
         Ok(self.size)
     }
 }

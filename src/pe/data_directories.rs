@@ -16,6 +16,14 @@ impl DataDirectory {
         let dd = bytes.gread_with(offset, scroll::LE)?;
         Ok(dd)
     }
+
+    pub fn data<'a>(&self, pe: &'a [u8]) -> error::Result<&'a [u8]> {
+        let start = usize::try_from(self.virtual_address)?;
+        let end = start + usize::try_from(self.size)?;
+
+        Ok(pe.get(start..end)
+            .ok_or(error::Error::Malformed("Invalid data directory range".into()))?)
+    }
 }
 
 #[derive(Debug, PartialEq, Copy, Clone, Default)]
@@ -27,7 +35,7 @@ impl ctx::TryIntoCtx<scroll::Endian> for DataDirectories {
     type Error = error::Error;
 
     fn try_into_ctx(self, bytes: &mut [u8], ctx: scroll::Endian) -> Result<usize, Self::Error> {
-        let mut offset = &mut 0;
+        let offset = &mut 0;
         for opt_dd in self.data_directories {
             if let Some(dd) = opt_dd {
                 bytes.gwrite_with(dd, offset, ctx)?;
