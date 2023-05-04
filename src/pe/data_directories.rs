@@ -1,11 +1,21 @@
 use crate::error;
-use scroll::{ctx, Pread, Pwrite, SizeWith};
+use alloc::vec::Vec;
+use core::ops::Deref;
+use scroll::{
+    ctx::{self, TryFromCtx},
+    Endian, Pread, Pwrite, SizeWith,
+};
 
 #[repr(C)]
 #[derive(Debug, PartialEq, Copy, Clone, Default, Pread, Pwrite, SizeWith)]
-pub struct DataDirectory {
+pub struct DataDirectoryInner {
     pub virtual_address: u32,
     pub size: u32,
+}
+#[derive(Debug, PartialEq, Copy, Clone, Default)]
+pub struct DataDirectory {
+    pub inner: DataDirectoryInner,
+    pub(crate) offset: Option<usize>,
 }
 
 pub const SIZEOF_DATA_DIRECTORY: usize = 8;
@@ -13,8 +23,93 @@ const NUM_DATA_DIRECTORIES: usize = 16;
 
 impl DataDirectory {
     pub fn parse(bytes: &[u8], offset: &mut usize) -> error::Result<Self> {
-        let dd = bytes.gread_with(offset, scroll::LE)?;
-        Ok(dd)
+        let inner = bytes.gread_with(offset, scroll::LE)?;
+        Ok(DataDirectory {
+            inner,
+            offset: Some(*offset),
+        })
+    }
+
+    pub fn data<'a>(&self, pe: &'a [u8]) -> error::Result<&'a [u8]> {
+        let start = self.offset.ok_or(error::Error::Malformed(
+            "Data directory loaded without offset information".into(),
+        ))?;
+        let end = start + usize::try_from(self.inner.size)?;
+
+        Ok(pe.get(start..end).ok_or(error::Error::Malformed(
+            "Invalid data directory range".into(),
+        ))?)
+    }
+}
+
+impl<'a> TryFromCtx<'a, Endian> for DataDirectory {
+    type Error = scroll::Error;
+
+    fn try_from_ctx(from: &'a [u8], ctx: Endian) -> Result<(Self, usize), Self::Error> {
+        let offset = &mut 0;
+        let inner = from.gread_with(offset, ctx)?;
+
+        Ok((
+            DataDirectory {
+                inner,
+                offset: None,
+            },
+            *offset,
+        ))
+    }
+}
+
+impl Deref for DataDirectory {
+    type Target = DataDirectoryInner;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum DataDirectoryType {
+    ExportTable,
+    ImportTable,
+    ResourceTable,
+    ExceptionTable,
+    CertificateTable,
+    BaseRelocationTable,
+    DebugTable,
+    Architecture,
+    GlobalPtr,
+    TlsTable,
+    LoadConfigTable,
+    BoundImportTable,
+    ImportAddressTable,
+    DelayImportDescriptor,
+    ClrRuntimeHeader,
+}
+
+impl TryFrom<usize> for DataDirectoryType {
+    type Error = error::Error;
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        Ok(match value {
+            0 => Self::ExportTable,
+            1 => Self::ImportTable,
+            2 => Self::ResourceTable,
+            3 => Self::ExceptionTable,
+            4 => Self::CertificateTable,
+            5 => Self::BaseRelocationTable,
+            6 => Self::DebugTable,
+            7 => Self::Architecture,
+            8 => Self::GlobalPtr,
+            9 => Self::TlsTable,
+            10 => Self::LoadConfigTable,
+            11 => Self::BoundImportTable,
+            12 => Self::ImportAddressTable,
+            13 => Self::DelayImportDescriptor,
+            14 => Self::ClrRuntimeHeader,
+            _ => {
+                return Err(error::Error::Malformed(
+                    "Wrong data directory index number".into(),
+                ))
+            }
+        })
     }
 }
 
@@ -27,10 +122,10 @@ impl ctx::TryIntoCtx<scroll::Endian> for DataDirectories {
     type Error = error::Error;
 
     fn try_into_ctx(self, bytes: &mut [u8], ctx: scroll::Endian) -> Result<usize, Self::Error> {
-        let mut offset = &mut 0;
+        let offset = &mut 0;
         for opt_dd in self.data_directories {
             if let Some(dd) = opt_dd {
-                bytes.gwrite_with(dd, offset, ctx)?;
+                bytes.gwrite_with(dd.inner, offset, ctx)?;
             } else {
                 let zero: Vec<u8> = vec![0; SIZEOF_DATA_DIRECTORY];
                 bytes.gwrite(&zero[..], offset)?;
@@ -119,5 +214,15 @@ impl DataDirectories {
     pub fn get_clr_runtime_header(&self) -> &Option<DataDirectory> {
         let idx = 14;
         &self.data_directories[idx]
+    }
+
+    pub fn dirs(&self) -> impl Iterator<Item = (DataDirectoryType, DataDirectory)> {
+        self.data_directories
+            .into_iter()
+            .enumerate()
+            // (Index, Option<DD>) -> Option<(Index, DD)> -> (DDT, DD)
+            .filter_map(|(i, o)|
+                // We should not have invalid indexes.
+                o.map(|v| (i.try_into().unwrap(), v)))
     }
 }
