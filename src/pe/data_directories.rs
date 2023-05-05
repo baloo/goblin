@@ -1,11 +1,17 @@
 use crate::error;
+use core::ops::Deref;
 use scroll::{ctx, Pread, Pwrite, SizeWith};
 
 #[repr(C)]
 #[derive(Debug, PartialEq, Copy, Clone, Default, Pread, Pwrite, SizeWith)]
-pub struct DataDirectory {
+pub struct DataDirectoryInner {
     pub virtual_address: u32,
     pub size: u32,
+}
+#[derive(Debug, PartialEq, Copy, Clone, Default)]
+pub struct DataDirectory {
+    pub inner: DataDirectoryInner,
+    pub(crate) offset: usize,
 }
 
 pub const SIZEOF_DATA_DIRECTORY: usize = 8;
@@ -13,16 +19,27 @@ const NUM_DATA_DIRECTORIES: usize = 16;
 
 impl DataDirectory {
     pub fn parse(bytes: &[u8], offset: &mut usize) -> error::Result<Self> {
-        let dd = bytes.gread_with(offset, scroll::LE)?;
-        Ok(dd)
+        let inner = bytes.gread_with(offset, scroll::LE)?;
+        Ok(DataDirectory {
+            inner,
+            offset: *offset,
+        })
     }
 
     pub fn data<'a>(&self, pe: &'a [u8]) -> error::Result<&'a [u8]> {
-        let start = usize::try_from(self.virtual_address)?;
-        let end = start + usize::try_from(self.size)?;
+        let start = self.offset;
+        let end = start + usize::try_from(self.inner.size)?;
 
-        Ok(pe.get(start..end)
-            .ok_or(error::Error::Malformed("Invalid data directory range".into()))?)
+        Ok(pe.get(start..end).ok_or(error::Error::Malformed(
+            "Invalid data directory range".into(),
+        ))?)
+    }
+}
+
+impl Deref for DataDirectory {
+    type Target = DataDirectoryInner;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }
 
@@ -38,7 +55,7 @@ impl ctx::TryIntoCtx<scroll::Endian> for DataDirectories {
         let offset = &mut 0;
         for opt_dd in self.data_directories {
             if let Some(dd) = opt_dd {
-                bytes.gwrite_with(dd, offset, ctx)?;
+                bytes.gwrite_with(dd.inner, offset, ctx)?;
             } else {
                 let zero: Vec<u8> = vec![0; SIZEOF_DATA_DIRECTORY];
                 bytes.gwrite(&zero[..], offset)?;

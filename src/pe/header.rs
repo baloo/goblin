@@ -11,8 +11,28 @@ use scroll::{ctx, IOread, IOwrite, Pread, Pwrite, SizeWith};
 pub struct DosHeader {
     /// Magic number: 5a4d
     pub signature: u16,
+    pub dos_header: DosBuffer,
     /// Pointer to PE header, always at offset 0x3c
     pub pe_pointer: u32,
+    pub dos_empty: DosEmpty,
+}
+
+#[repr(C)]
+#[derive(Debug, PartialEq, Copy, Clone, Pread, Pwrite)]
+pub struct DosEmpty(pub [u8; 0x40]);
+impl Default for DosEmpty {
+    fn default() -> Self {
+        Self([0u8; 0x40])
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, PartialEq, Copy, Clone, Pread, Pwrite)]
+pub struct DosBuffer(pub [u8; 0x3a]);
+impl Default for DosBuffer {
+    fn default() -> Self {
+        todo!();
+    }
 }
 
 pub const DOS_MAGIC: u16 = 0x5a4d;
@@ -29,6 +49,9 @@ impl DosHeader {
                 signature
             )));
         }
+
+        let dos_header = bytes.pread(2).unwrap();
+
         let pe_pointer = bytes
             .pread_with(PE_POINTER_OFFSET as usize, scroll::LE)
             .map_err(|_| {
@@ -37,6 +60,8 @@ impl DosHeader {
                     PE_POINTER_OFFSET
                 ))
             })?;
+        let dos_empty = bytes.pread(0x40).unwrap();
+        println!("pe_pointer: {}", pe_pointer);
         let pe_signature: u32 =
             bytes
                 .pread_with(pe_pointer as usize, scroll::LE)
@@ -54,6 +79,8 @@ impl DosHeader {
         }
         Ok(DosHeader {
             signature,
+            dos_header,
+            dos_empty,
             pe_pointer,
         })
     }
@@ -173,9 +200,13 @@ impl CoffHeader {
     pub fn strings<'a>(&self, bytes: &'a [u8]) -> error::Result<strtab::Strtab<'a>> {
         let mut offset = self.pointer_to_symbol_table as usize
             + symbol::SymbolTable::size(self.number_of_symbol_table as usize);
+        println!("offset: {}", self.pointer_to_symbol_table);
+        println!("offset: {}", offset);
+        println!("nb symbol: {}", self.number_of_symbol_table);
 
         let length_field_size = core::mem::size_of::<u32>();
         let length = bytes.pread_with::<u32>(offset, scroll::LE)? as usize - length_field_size;
+        println!("length: {}", length);
 
         // The offset needs to be advanced in order to read the strings.
         offset += length_field_size;

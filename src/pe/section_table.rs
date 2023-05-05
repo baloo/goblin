@@ -79,18 +79,16 @@ impl SectionTable {
         Ok(table)
     }
 
-    pub fn data<'a, 'b: 'a>(
-        &'a self,
-        pe_bytes: &'b [u8]
-    ) -> error::Result<Option<&[u8]>> {
-        let section_start: usize = self.virtual_address.try_into()
-            .map_err(|_| Error::Malformed(format!(
-                        "Virtual address cannot fit in platform `usize`")))?;
+    pub fn data<'a, 'b: 'a>(&'a self, pe_bytes: &'b [u8]) -> error::Result<Option<&[u8]>> {
+        let section_start: usize = self.pointer_to_raw_data.try_into().map_err(|_| {
+            Error::Malformed(format!("Virtual address cannot fit in platform `usize`"))
+        })?;
 
         assert!(self.virtual_size <= self.size_of_raw_data);
-        let section_end: usize = section_start + usize::try_from(self.virtual_size)
-            .map_err(|_| Error::Malformed(format!(
-                        "Virtual size cannot fit in platform `usize`")))?;
+        let section_end: usize = section_start
+            + usize::try_from(self.virtual_size).map_err(|_| {
+                Error::Malformed(format!("Virtual size cannot fit in platform `usize`"))
+            })?;
 
         Ok(pe_bytes.get(section_start..section_end))
     }

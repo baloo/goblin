@@ -140,12 +140,14 @@ impl<'a> ctx::TryIntoCtx<scroll::Endian> for AttributeCertificate<'a> {
         // Extend by zero the buffer until it is aligned.
         // TODO(RaitoBezarius): is there a better method to do this?
         let aligned_offset = (*offset + 7) & !7;
-        let mut zero_buffer: Vec<u8> = Vec::new();
-        zero_buffer.resize(aligned_offset - *offset, 0);
+        let zero_buffer = vec![0u8; aligned_offset - *offset];
         bytes.gwrite(&zero_buffer[..], offset)?;
         // dwLength includes certificate size + header size.
-        usize::try_from(self.length)
-        .map_err(|_err| error::Error::Malformed("Certificate size cannot fit in current platform's usize".to_string()))
+        usize::try_from(self.length).map_err(|_err| {
+            error::Error::Malformed(
+                "Certificate size cannot fit in current platform's usize".to_string(),
+            )
+        })
     }
 }
 

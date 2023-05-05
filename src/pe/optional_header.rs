@@ -82,7 +82,7 @@ impl From<StandardFields> for StandardFields32 {
             size_of_uninitialized_data: fields.size_of_uninitialized_data as u32,
             address_of_entry_point: fields.address_of_entry_point as u32,
             base_of_code: fields.base_of_code as u32,
-            base_of_data: fields.base_of_data
+            base_of_data: fields.base_of_data,
         }
     }
 }
@@ -113,7 +113,7 @@ impl From<StandardFields> for StandardFields64 {
             size_of_initialized_data: fields.size_of_initialized_data as u32,
             size_of_uninitialized_data: fields.size_of_uninitialized_data as u32,
             address_of_entry_point: fields.address_of_entry_point as u32,
-            base_of_code: fields.base_of_code as u32
+            base_of_code: fields.base_of_code as u32,
         }
     }
 }
@@ -259,6 +259,7 @@ impl From<WindowsFields32> for WindowsFields {
 //             dll_characteristics: windows.dll_characteristics,
 //             size_of_stack_reserve: windows.size_of_stack_reserve,
 //             size_of_stack_commit: windows.size_of_stack_commit,
+//             G
 //             size_of_heap_reserve: windows.size_of_heap_reserve,
 //             size_of_heap_commit: windows.size_of_heap_commit,
 //             loader_flags: windows.loader_flags,
@@ -330,13 +331,13 @@ impl ctx::TryIntoCtx<scroll::Endian> for OptionalHeader {
                 bytes.gwrite_with::<StandardFields32>(self.standard_fields.into(), offset, ctx)?;
                 // TODO: windowsfields64 -> windowsfields32
                 todo!();
-            },
+            }
             MAGIC_64 => {
                 bytes.gwrite_with::<StandardFields64>(self.standard_fields.into(), offset, ctx)?;
                 bytes.gwrite_with(self.windows_fields, offset, ctx)?;
                 bytes.gwrite_with(self.data_directories, offset, ctx)?;
             }
-            _ => panic!()
+            _ => panic!(),
         }
         Ok(*offset)
     }
