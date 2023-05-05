@@ -42,6 +42,9 @@ git = "https://github.com/RustCrypto/formats"
 default-features = false
 optional = true
 
+[patch.crates-io]
+der = { git = "https://github.com/RustCrypto/formats" }
+
 [dependencies.pkcs7]
 git = "https://github.com/RustCrypto/formats"
 default-features = false
