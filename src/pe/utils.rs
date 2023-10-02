@@ -21,6 +21,23 @@ fn aligned_pointer_to_raw_data(pointer_to_raw_data: usize) -> usize {
     pointer_to_raw_data & !PHYSICAL_ALIGN
 }
 
+// Performs arbitrary alignment of values
+// based on homogeneous numerical types.
+#[inline]
+pub fn align_to<N>(value: N, align: N) -> N
+where
+    N: std::ops::Add<Output = N>
+        + std::ops::Not<Output = N>
+        + std::ops::BitAnd<Output = N>
+        + std::ops::Sub<Output = N>
+        + std::cmp::PartialEq
+        + std::marker::Copy,
+    u8: Into<N>,
+{
+    debug_assert!(align != 0u8.into(), "Align must be non-zero");
+    return (value + align - 1u8.into()) & !(align - 1u8.into());
+}
+
 #[inline]
 fn section_read_size(section: &section_table::SectionTable, file_alignment: u32) -> usize {
     fn round_size(size: usize) -> usize {
