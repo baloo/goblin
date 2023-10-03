@@ -5,9 +5,6 @@ use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use scroll::{ctx, Pread, Pwrite};
 
-use super::PE;
-use super::utils::align_to;
-
 #[repr(C)]
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct SectionTable {
@@ -98,51 +95,6 @@ fn base64_decode_string_entry(s: &str) -> Result<usize, ()> {
 }
 
 impl SectionTable {
-    pub fn new(
-        pe: &PE,
-        name: &[u8; 8],
-        contents: &[u8],
-        characteristics: u32,
-        section_alignment: u32
-    ) -> error::Result<Self> {
-        let mut table = SectionTable::default();
-        // VA is needed only if characteristics is
-        // execute | read | write.
-        let need_virtual_address = true;
-
-        table.name = *name;
-        table.size_of_raw_data = contents.len().try_into()?;
-        table.characteristics = characteristics;
-
-        // Filling this data requires a complete overview
-        // of the final PE which may involve rewriting
-        // the complete PE.
-        table.pointer_to_raw_data = 0;
-        table.pointer_to_relocations = 0;
-
-        table.pointer_to_linenumbers = 0;
-        table.number_of_linenumbers = 0;
-        table.pointer_to_relocations = 0;
-
-        if need_virtual_address {
-            table.virtual_size = contents.len().try_into()?;
-            let mut sections = pe.sections.clone();
-            sections.sort_by_key(|sect| sect.virtual_address);
-            // Base VA = 0 ?
-            let last_section_offset = sections.last()
-                .map(|last_section| last_section.virtual_address + last_section.virtual_size)
-                .ok_or(0u32).unwrap();
-
-            table.virtual_address = align_to(last_section_offset, section_alignment);
-        } else {
-            table.virtual_size = 0;
-            table.virtual_address = 0;
-        }
-
-        Ok(table)
-    }
-
-
     pub fn parse(
         bytes: &[u8],
         offset: &mut usize,
@@ -169,7 +121,21 @@ impl SectionTable {
         Ok(table)
     }
 
-    pub fn data<'a, 'b: 'a>(&'a self, pe_bytes: &'b [u8]) -> error::Result<Option<Cow<[u8]>>> {
+    /// Consumes this header into a fully-fledged and self-contained Section
+    /// The section may need to outlive the PE bytes.
+    pub fn into_section<'b, 'a: 'b>(mut self, pe_bytes: &'a [u8]) -> error::Result<Section<'b>> {
+        let contents: Option<Cow<[u8]>> = self.data(pe_bytes)?.to_owned();
+        let relocations = self.relocations(pe_bytes)?.collect::<Vec<_>>();
+        let table = std::mem::take(&mut self);
+
+        Ok(Section {
+            table,
+            contents,
+            relocations,
+        })
+    }
+
+    pub fn data<'a, 'b: 'a>(&'a self, pe_bytes: &'b [u8]) -> error::Result<Option<Cow<'b, [u8]>>> {
         let section_start: usize = self.pointer_to_raw_data.try_into().map_err(|_| {
             Error::Malformed(format!("Virtual address cannot fit in platform `usize`"))
         })?;
@@ -296,7 +262,7 @@ impl ctx::SizeWith<scroll::Endian> for SectionTable {
     }
 }
 
-impl ctx::TryIntoCtx<scroll::Endian> for SectionTable {
+impl ctx::TryIntoCtx<scroll::Endian> for &SectionTable {
     type Error = error::Error;
     fn try_into_ctx(self, bytes: &mut [u8], ctx: scroll::Endian) -> Result<usize, Self::Error> {
         let offset = &mut 0;
@@ -316,7 +282,7 @@ impl ctx::TryIntoCtx<scroll::Endian> for SectionTable {
 
 impl ctx::IntoCtx<scroll::Endian> for SectionTable {
     fn into_ctx(self, bytes: &mut [u8], ctx: scroll::Endian) {
-        bytes.pwrite_with(self, 0, ctx).unwrap();
+        bytes.pwrite_with(&self, 0, ctx).unwrap();
     }
 }
 
