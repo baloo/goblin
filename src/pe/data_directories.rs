@@ -1,6 +1,6 @@
 use crate::error;
 use alloc::vec::Vec;
-use core::ops::Deref;
+use core::ops::{Deref, DerefMut};
 use scroll::{
     ctx::{self, TryFromCtx},
     Endian, Pread, Pwrite, SizeWith,
@@ -63,6 +63,12 @@ impl Deref for DataDirectory {
     type Target = DataDirectoryInner;
     fn deref(&self) -> &Self::Target {
         &self.inner
+    }
+}
+
+impl DerefMut for DataDirectory {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
     }
 }
 
