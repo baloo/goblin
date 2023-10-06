@@ -253,6 +253,7 @@ impl CoffHeader {
         let string_table_offset = self.pointer_to_symbol_table as usize
             + symbol::SymbolTable::size(self.number_of_symbol_table as usize);
         for i in 0..nsections {
+            debug!("parsing section at offset {offset}");
             let section =
                 section_table::SectionTable::parse(bytes, offset, string_table_offset as usize)?;
             debug!("({}) {:#?}", i, section);

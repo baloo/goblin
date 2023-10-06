@@ -313,8 +313,10 @@ impl<'a> PE<'a> {
             // you can check the parse logic to understand how that works
             if dt_type == DataDirectoryType::CertificateTable {
                 let mut certificate_start = dd.virtual_address.try_into()?;
-                for certificate in &self.certificates {
-                    bytes.gwrite_with(certificate, &mut certificate_start, ctx)?;
+                for (original_offset, certificate) in &self.certificates {
+                    debug!("certificate size: {}", certificate.length);
+                    debug!("writing certificate at offset {} (original: {})", certificate_start, original_offset);
+                    written += bytes.gwrite_with(certificate, &mut certificate_start, ctx)?;
                     max_offset = max(max_offset, certificate_start);
                 }
             } else {
