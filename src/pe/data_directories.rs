@@ -37,7 +37,7 @@ impl DataDirectory {
         let end = start + usize::try_from(self.inner.size)?;
 
         Ok(pe.get(start..end).ok_or(error::Error::Malformed(
-            "Invalid data directory range".into(),
+            format!("Invalid data directory range ({start}..{end})"),
         ))?)
     }
 }
