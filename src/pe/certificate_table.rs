@@ -8,6 +8,7 @@ use scroll::{ctx, Pread, Pwrite};
 
 use alloc::string::ToString;
 use alloc::vec::Vec;
+use alloc::borrow::Cow;
 
 #[repr(u16)]
 #[derive(Debug, PartialEq, Copy, Clone)]
@@ -89,7 +90,7 @@ pub struct AttributeCertificate<'a> {
     pub length: u32,
     pub revision: AttributeCertificateRevision,
     pub certificate_type: AttributeCertificateType,
-    pub certificate: &'a [u8],
+    pub certificate: Cow<'a, [u8]>,
 }
 
 impl<'a> AttributeCertificate<'a> {
@@ -117,7 +118,7 @@ impl<'a> AttributeCertificate<'a> {
                 length: header.length,
                 revision: header.revision.try_into()?,
                 certificate_type: header.certificate_type.try_into()?,
-                certificate: bytes,
+                certificate: bytes.into(),
             };
             // Moving past the certificate data.
             // Prevent the current_offset to wrap and ensure current_offset is strictly increasing.
@@ -143,7 +144,7 @@ impl<'a> ctx::TryIntoCtx<scroll::Endian> for &AttributeCertificate<'a> {
         bytes.gwrite_with(self.length, offset, ctx)?;
         bytes.gwrite_with(self.revision as u16, offset, ctx)?;
         bytes.gwrite_with(self.certificate_type as u16, offset, ctx)?;
-        bytes.gwrite(self.certificate, offset)?;
+        bytes.gwrite(self.certificate.as_ref(), offset)?;
         // Extend by zero the buffer until it is aligned.
         // TODO(RaitoBezarius): is there a better method to do this?
         let aligned_offset = (*offset + 7) & !7;
