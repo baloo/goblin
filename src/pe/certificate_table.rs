@@ -84,6 +84,7 @@ struct AttributeCertificateHeader {
     certificate_type: u16,
 }
 
+pub const ATTRIBUTE_CERTIFICATE_HEADER_SIZEOF: usize = core::mem::size_of::<AttributeCertificateHeader>();
 const CERTIFICATE_DATA_OFFSET: u32 = 8;
 #[derive(Debug)]
 pub struct AttributeCertificate<'a> {
@@ -94,6 +95,20 @@ pub struct AttributeCertificate<'a> {
 }
 
 impl<'a> AttributeCertificate<'a> {
+    /// Takes the raw bytes constituting a certificate
+    /// and wrap it into an AttributeCertificate.
+    /// Caller is responsible for ensuring the consistency between
+    /// the certificate type and what is in the certificate (DER, etc.).
+    pub fn from_bytes(certificate: Cow<'a, [u8]>, revision: AttributeCertificateRevision, certificate_type: AttributeCertificateType) -> Self {
+        Self {
+            // TODO: turn into a fallible conversion.
+            length: (certificate.len() + ATTRIBUTE_CERTIFICATE_HEADER_SIZEOF) as u32,
+            revision,
+            certificate_type,
+            certificate
+        }
+    }
+
     pub fn parse(
         bytes: &'a [u8],
         current_offset: &mut usize,
