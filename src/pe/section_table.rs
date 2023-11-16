@@ -1,6 +1,7 @@
 use crate::error::{self, Error};
 use crate::pe::relocation;
 use alloc::borrow::Cow;
+use alloc::borrow::ToOwned;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use scroll::{ctx, Pread, Pwrite};
@@ -126,7 +127,7 @@ impl SectionTable {
     pub fn into_section<'b, 'a: 'b>(mut self, pe_bytes: &'a [u8]) -> error::Result<Section<'b>> {
         let contents: Option<Cow<[u8]>> = self.data(pe_bytes)?.to_owned();
         let relocations = self.relocations(pe_bytes)?.collect::<Vec<_>>();
-        let table = std::mem::take(&mut self);
+        let table = core::mem::take(&mut self);
 
         Ok(Section {
             table,

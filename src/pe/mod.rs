@@ -37,7 +37,6 @@ use log::debug;
 
 use self::data_directories::DataDirectories;
 use self::data_directories::DataDirectoryType;
-use self::optional_header::OptionalHeader;
 
 #[derive(Debug)]
 /// An analyzed PE32/PE32+ binary

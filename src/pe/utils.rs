@@ -26,12 +26,12 @@ fn aligned_pointer_to_raw_data(pointer_to_raw_data: usize) -> usize {
 #[inline]
 pub fn align_to<N>(value: N, align: N) -> N
 where
-    N: std::ops::Add<Output = N>
-        + std::ops::Not<Output = N>
-        + std::ops::BitAnd<Output = N>
-        + std::ops::Sub<Output = N>
-        + std::cmp::PartialEq
-        + std::marker::Copy,
+    N: core::ops::Add<Output = N>
+        + core::ops::Not<Output = N>
+        + core::ops::BitAnd<Output = N>
+        + core::ops::Sub<Output = N>
+        + core::cmp::PartialEq
+        + core::marker::Copy,
     u8: Into<N>,
 {
     debug_assert!(align != 0u8.into(), "Align must be non-zero");
