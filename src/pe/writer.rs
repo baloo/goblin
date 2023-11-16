@@ -1,3 +1,4 @@
+use core::cmp::max;
 /// Meta writer structures for PE
 /// PE is a complicated format that requires meta knowledge about all its fields
 /// and reorganization at write time as we cannot predict all fields based on local information.
@@ -5,6 +6,7 @@
 /// for the complexity of PE.
 /// Heavily inspired of how LLVM objcopy works for COFF.
 use core::mem::size_of;
+use alloc::vec::Vec;
 
 use log::debug;
 use log::trace;
@@ -18,10 +20,11 @@ use crate::pe::optional_header::StandardFields32;
 use crate::pe::optional_header::StandardFields64;
 use crate::pe::optional_header::WindowsFields32;
 use crate::pe::optional_header::WindowsFields64;
-use crate::pe::relocation::Relocations;
 use crate::pe::utils::align_to;
 
+use super::certificate_table::AttributeCertificate;
 use super::data_directories::DataDirectory;
+use super::data_directories::DataDirectoryInner;
 use super::data_directories::DataDirectoryType;
 use super::debug::ImageDebugDirectory;
 use super::error;
@@ -42,27 +45,32 @@ use super::PE;
 // which is a strict limit for PE, taken from LLVM.
 const MAX_NUMBER_OF_SECTIONS_PE: usize = 65279;
 
-pub struct PEWriter<'a, 'b> {
-    pe: PE<'a>,
+fn certificate_contents_length<'cert>(certificates: &Vec<AttributeCertificate<'cert>>) -> u32 {
+    certificates.iter().map(|cert| cert.length).sum()
+}
+
+pub struct PEWriter<'pe, 'b> {
+    pe: PE<'pe>,
     file_size: u32,
     file_alignment: u32,
     section_alignment: u32,
     size_of_initialized_data: u64,
     pending_sections: Vec<Section<'b>>,
     ready_sections: Vec<Section<'b>>,
+    prefinalized: bool
 }
 
-impl<'a, 'b> PEWriter<'a, 'b> {
+impl<'pe, 'b> PEWriter<'pe, 'b> {
     /// Consume the PE and store on-the-side information to rewrite
     /// this PE with new information, e.g. new sections.
     /// Some data can be manipulated beforehand and will be correctly rewritten
     /// but this is very driven by implementation details.
     /// It is guaranteed to work for new sections and removed sections, not for much more.
-    pub fn new(pe: PE<'a>) -> error::Result<Self> {
+    pub fn new(pe: PE<'pe>) -> error::Result<Self> {
         let header = pe.header.optional_header.ok_or(error::Error::Malformed(
             "Missing optional header, write is not supported in this usecase".into(),
         ))?;
-        Ok(Self {
+        let mut writer = Self {
             pe,
             file_size: 0,
             file_alignment: header.windows_fields.file_alignment,
@@ -70,7 +78,11 @@ impl<'a, 'b> PEWriter<'a, 'b> {
             size_of_initialized_data: 0,
             pending_sections: Vec::new(),
             ready_sections: Vec::new(),
-        })
+            prefinalized: false
+        };
+
+        writer.clear_certificates();
+        Ok(writer)
     }
 
     /// Enqueue a pending section to be laid out at write time.
@@ -113,7 +125,7 @@ impl<'a, 'b> PEWriter<'a, 'b> {
         fn layout_section(
             file_size: &mut u32,
             size_of_initialized_data: &mut u64,
-            mut header: &mut SectionTable,
+            header: &mut SectionTable,
             data_length: usize,
             n_relocations: usize,
             file_alignment: u32,
@@ -167,15 +179,6 @@ impl<'a, 'b> PEWriter<'a, 'b> {
         Ok(())
     }
 
-    fn layout_certificates(&mut self) -> error::Result<u32> {
-        let mut total_length = 0;
-        for (_, certificate) in &self.pe.certificates {
-            self.file_size += certificate.length;
-            total_length += certificate.length;
-        }
-        Ok(total_length)
-    }
-
     fn layout_data_directories_contents(
         &mut self,
         opt_header: &mut OptionalHeader,
@@ -207,21 +210,10 @@ impl<'a, 'b> PEWriter<'a, 'b> {
                 self.file_size += dd.size;
             }
         }
-        // 4 := certificate data directory
-        // it is special because it virtual size does not reflect the full size
-        // of attribute certificates available.
-        // virtual size is only the size of a single bundle of certificate.
-        if let Some(cert_table) = opt_header.data_directories.data_directories[4].as_mut() {
-            cert_table.virtual_address = self.file_size;
-            cert_table.size = self.layout_certificates()?;
-        }
         // 6 := debug table
         // it is special because if it exist, it must be *after* the certificate table.
         // this is incorrect, the data directory offset must point at some section offset.
-        if let Some(debug_table) = opt_header.data_directories.data_directories[6].as_mut() {
-            debug_table.offset = Some(self.file_size as usize);
-            self.file_size += debug_table.size;
-        }
+        opt_header.data_directories.data_directories[6] = None;
         Ok(())
     }
 
@@ -304,6 +296,7 @@ impl<'a, 'b> PEWriter<'a, 'b> {
 
         self.pe.header.optional_header = Some(opt_header);
         self.file_size = align_to(self.file_size, self.file_alignment);
+        self.prefinalized = true;
         Ok(())
     }
 
@@ -335,7 +328,7 @@ impl<'a, 'b> PEWriter<'a, 'b> {
         // For executable sections, pad the remainder of the raw data size
         // with 0xCC, because it's useful on x86 (debugger breakpoint).
         let mut written = 0;
-        let ready_sections = std::mem::take(&mut self.ready_sections);
+        let ready_sections = core::mem::take(&mut self.ready_sections);
         for section in self
             .pe
             .sections
@@ -422,6 +415,90 @@ impl<'a, 'b> PEWriter<'a, 'b> {
         Ok(0)
     }
 
+    /// Clear the current set of certificates attached to the PE binary.
+    pub fn clear_certificates(&mut self) {
+        if let Some(opt_header) = self.pe.header.optional_header.as_mut() {
+            opt_header.data_directories.data_directories[4] = None;
+        }
+        self.pe.certificates.clear();
+        debug!("cleared the certificate table");
+    }
+
+    /// Clear the current set of certificates attached to the PE binary
+    /// and re-attach those passed.
+    /// PE is usually [ header ... | sections ... | certificates ... | debug table ].
+    /// This operation will expand the certificates area and push the debug table.
+    /// It will also update the PE's header to inform about the new size.
+    ///
+    /// This operation should have no effect on the Authenticode hash
+    /// as per the specification.
+    pub fn attach_certificates<'cert: 'pe>(&mut self, certificates: Vec<AttributeCertificate<'cert>>) -> error::Result<()> {
+        // TODO: We need to recopy the debug table *after* this certificate table.
+        // Currently, debug table is overwritten / ignored.
+
+        self.finalize()?;
+        let opt_header = self.pe.header.optional_header
+            .as_mut()
+            .ok_or(error::Error::Malformed(
+                    "Missing optional header for a PE".into()
+            ))?;
+        // 4 := certificate data directory
+        // it is special because it virtual size does not reflect the full size
+        // of attribute certificates available.
+        // virtual size is only the size of a single bundle of certificate.
+        let mut cert_table = opt_header.data_directories.data_directories[4].unwrap_or_else(|| DataDirectory {
+            inner: DataDirectoryInner {
+                virtual_address: self.file_size,
+                size: 0
+            },
+            // Offset is not required for certificate table.
+            offset: None
+        });
+        // We need to expand the area.
+        let required_length = certificate_contents_length(&certificates);
+        debug!("required length for new certificates: {}, existing length: {}, current file size: {}",
+            required_length,
+            cert_table.size,
+            self.file_size
+        );
+        if required_length > cert_table.size {
+            // let debug_table = self.clear_debug_table()?;
+            // Either, we are big enough already,
+            // or we need to grow to the alignment of our current size + delta size.
+            self.file_size = max(self.file_size,
+                align_to(cert_table.virtual_address + required_length,
+                    self.file_alignment));
+            cert_table.size = required_length;
+            // ensure self.file_size is big enough?
+            // add_debug_table(debug_table);
+        } else {
+            // Ideally, we should unexpand here.
+            // let debug_table = self.clear_debug_table()?;
+            // cert_table.size = required_length;
+            // ensure self.file_size is smaller.
+            // add_debug_table(debug_table);
+        }
+
+        opt_header.data_directories.data_directories[4] = Some(cert_table);
+
+        assert!(self.file_size >= cert_table.virtual_address + cert_table.size,
+            "File size is less than the offset of the last certificate in the binary"
+        );
+
+        self.pe.certificates.reserve_exact(certificates.len());
+        for (index, cert) in certificates.into_iter().enumerate() {
+            let offset = if index > 0 {
+                self.pe.certificates[index - 1].0 + self.pe.certificates[index - 1].1.length as usize
+            } else {
+                cert_table.virtual_address as usize
+            };
+
+            self.pe.certificates.push((offset, cert));
+        }
+
+        Ok(())
+    }
+
     pub fn write_into(&mut self) -> error::Result<Vec<u8>> {
         let total_sections = self.pending_sections.len() + self.pe.sections.len();
         let is_too_large = total_sections >= MAX_NUMBER_OF_SECTIONS_PE;
@@ -434,8 +511,12 @@ impl<'a, 'b> PEWriter<'a, 'b> {
 
         let mut written = 0;
 
-        self.finalize()?;
-        debug!("finalized the new PE binary at {} bytes", self.file_size);
+        if !self.prefinalized {
+            self.finalize()?;
+            debug!("finalized the new PE binary at {} bytes", self.file_size);
+        } else {
+            debug!("pre-finalized the new PE binary at {} bytes", self.file_size);
+        }
         let mut buffer = vec![0; self.file_size as usize];
 
         written += self.write_headers(&mut buffer)?;
