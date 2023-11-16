@@ -86,7 +86,7 @@ struct AttributeCertificateHeader {
 
 pub const ATTRIBUTE_CERTIFICATE_HEADER_SIZEOF: usize = core::mem::size_of::<AttributeCertificateHeader>();
 const CERTIFICATE_DATA_OFFSET: u32 = 8;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AttributeCertificate<'a> {
     pub length: u32,
     pub revision: AttributeCertificateRevision,
