@@ -10,6 +10,8 @@
 
 use core::ops::Range;
 
+use log::trace;
+
 use super::PE;
 
 impl PE<'_> {
@@ -77,22 +79,27 @@ impl<'s> Iterator for ExcludedSectionsIter<'s> {
                 match self.state {
                     IterState::Initial => {
                         self.state = IterState::DatadirEntry(sections.checksum.end);
+                        trace!("initial → data directory: 0..{}", sections.checksum.start);
                         return Some(&bytes[..sections.checksum.start]);
                     }
                     IterState::DatadirEntry(start) => {
                         self.state = IterState::CertTable(sections.datadir_entry_certtable.end);
+                        trace!("data directory → data directory certificate table entry: {}..{}", start, sections.datadir_entry_certtable.start);
                         return Some(&bytes[start..sections.datadir_entry_certtable.start]);
                     }
                     IterState::CertTable(start) => {
                         if let Some(certtable) = sections.certtable.as_ref() {
+                            trace!("data directory certificate table start → certificate table start: {}..{}", start, certtable.start);
                             self.state = IterState::Final(certtable.end);
                             return Some(&bytes[start..certtable.start]);
                         } else {
+                            trace!("no cert table, moving to {}", start);
                             self.state = IterState::Final(start)
                         }
                     }
                     IterState::Final(start) => {
                         self.state = IterState::Done;
+                        trace!("final → end: {}..", start);
                         return Some(&bytes[start..]);
                     }
                     IterState::Done => return None,
