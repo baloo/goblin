@@ -198,6 +198,7 @@ impl<'a, 'b> PEWriter<'a, 'b> {
             // > files, however.
             // https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#other-contents-of-the-file
             if dd_type == DataDirectoryType::CertificateTable || dd_type == DataDirectoryType::DebugTable {
+                trace!("skipped {:?} as it is certificate table or debug table.", dir);
                 continue;
             }
 
