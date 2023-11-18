@@ -465,26 +465,15 @@ impl<'pe, 'b> PEWriter<'pe, 'b> {
             cert_table.size,
             self.file_size
         );
-        if required_length > cert_table.size {
-            // let debug_table = self.clear_debug_table()?;
-            // Either, we are big enough already,
-            // or we need to grow to the alignment of our current size + delta size.
-            let aligned_cert_table_end = align_to(cert_table.virtual_address + required_length, self.file_alignment);
-            self.file_size = max(self.file_size, aligned_cert_table_end);
-            if self.file_size == aligned_cert_table_end {
-                cert_table.size = aligned_cert_table_end - cert_table.virtual_address;
-            } else {
-                cert_table.size = required_length;
-            }
-            // ensure self.file_size is big enough?
-            // add_debug_table(debug_table);
-        } else {
-            // Ideally, we should unexpand here.
-            // let debug_table = self.clear_debug_table()?;
-            // cert_table.size = required_length;
-            // ensure self.file_size is smaller.
-            // add_debug_table(debug_table);
-        }
+
+        // let debug_table = self.clear_debug_table()?;
+        // Either, we are big enough already,
+        // or we need to grow to the alignment of our current size + delta size.
+        cert_table.virtual_address = self.file_size;
+        self.file_size += required_length + 1;
+        cert_table.size = required_length;
+        // ensure self.file_size is big enough?
+        // add_debug_table(debug_table);
 
         opt_header.data_directories.data_directories[4] = Some(cert_table);
 
@@ -502,9 +491,6 @@ impl<'pe, 'b> PEWriter<'pe, 'b> {
 
             self.pe.certificates.push((offset, cert));
         }
-
-        let (disk_offset, last_certificate) = self.pe.certificates.last_mut().unwrap();
-        last_certificate.length = self.file_size - (*disk_offset as u32);
 
         Ok(())
     }
@@ -597,8 +583,8 @@ impl<'pe, 'b> PEWriter<'pe, 'b> {
                     },
                     (None, Some(dd_end)) =>
                         align_to(dd_end, self.file_alignment) == self.file_size,
-                    (Some(cert_end), None) =>
-                        align_to(cert_end, self.file_alignment) == self.file_size,
+                    (Some(cert_end), None) => true,
+                        //align_to(cert_end, self.file_alignment) == self.file_size,
                     (None, None) => true
                 }
             }).unwrap_or(true),

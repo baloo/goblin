@@ -314,9 +314,10 @@ impl<'a> PE<'a> {
                 let mut certificate_start = dd.virtual_address.try_into()?;
                 for (original_offset, certificate) in &self.certificates {
                     debug!("certificate size: {}", certificate.length);
-                    debug!("writing certificate at offset {} (original: {})", certificate_start, original_offset);
+                    debug!("writing certificate at offset {} (original: {}, size of buffer: {})", certificate_start, original_offset, bytes.len());
                     written += bytes.gwrite_with(certificate, &mut certificate_start, ctx)?;
                     max_offset = max(max_offset, certificate_start);
+                    debug!("wrote certificate, now at {max_offset}");
                 }
             } else {
                 let offset = dd.offset.ok_or(error::Error::Malformed(
