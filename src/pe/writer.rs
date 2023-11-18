@@ -470,7 +470,7 @@ impl<'pe, 'b> PEWriter<'pe, 'b> {
         // Either, we are big enough already,
         // or we need to grow to the alignment of our current size + delta size.
         cert_table.virtual_address = self.file_size;
-        self.file_size += required_length + 1;
+        self.file_size += required_length;
         cert_table.size = required_length;
         // ensure self.file_size is big enough?
         // add_debug_table(debug_table);

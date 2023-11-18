@@ -160,11 +160,6 @@ impl<'a> ctx::TryIntoCtx<scroll::Endian> for &AttributeCertificate<'a> {
         bytes.gwrite_with(self.revision as u16, offset, ctx)?;
         bytes.gwrite_with(self.certificate_type as u16, offset, ctx)?;
         bytes.gwrite(self.certificate.as_ref(), offset)?;
-        // Extend by zero the buffer until it is aligned.
-        // TODO(RaitoBezarius): is there a better method to do this?
-        let aligned_offset = (*offset + 7) & !7;
-        let zero_buffer = vec![0u8; aligned_offset - *offset];
-        bytes.gwrite(&zero_buffer[..], offset)?;
 
         Ok(*offset)
     }
