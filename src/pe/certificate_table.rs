@@ -77,13 +77,24 @@ impl TryFrom<u16> for AttributeCertificateType {
     }
 }
 
-#[derive(Clone, Pread)]
-struct AttributeCertificateHeader {
+/// WIN_CERTIFICATE header structure
+/// It's useful beyond only parsing PE certificates
+/// This can be used to parse EFI variable structures containing certificates for example.
+/// Example: https://dox.ipxe.org/structWIN__CERTIFICATE__UEFI__GUID.html
+#[derive(Debug, Clone, Pread)]
+pub struct AttributeCertificateHeader {
     /// dwLength
-    length: u32,
-    revision: u16,
-    certificate_type: u16,
+    pub length: u32,
+    /// wRevision
+    pub revision: u16,
+    /// wCertificateType
+    pub certificate_type: u16,
 }
+
+/// An alternative name for the WIN_CERTIFICATE header structure.
+pub type WindowsCertificateHeader = AttributeCertificateHeader;
+pub const ATTRIBUTE_CERTIFICATE_HEADER_SIZEOF: usize =
+    core::mem::size_of::<AttributeCertificateHeader>();
 
 const CERTIFICATE_DATA_OFFSET: u32 = 8;
 #[derive(Debug)]
