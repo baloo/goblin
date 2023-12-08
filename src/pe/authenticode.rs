@@ -19,6 +19,7 @@ impl PE<'_> {
         ExcludedSectionsIter {
             pe: self,
             state: IterState::default(),
+            hash_size: 0,
         }
     }
 }
@@ -49,6 +50,7 @@ impl ExcludedSections {
 pub struct ExcludedSectionsIter<'s> {
     pe: &'s PE<'s>,
     state: IterState,
+    hash_size: usize,
 }
 
 #[derive(Debug, PartialEq)]
@@ -57,6 +59,7 @@ enum IterState {
     DatadirEntry(usize),
     CertTable(usize),
     Final(usize),
+    Padding(usize),
     Done,
 }
 
@@ -92,8 +95,17 @@ impl<'s> Iterator for ExcludedSectionsIter<'s> {
                         }
                     }
                     IterState::Final(start) => {
+                        let buf = &bytes[start..];
+                        self.state = IterState::Padding(buf.len());
+                        return Some(buf);
+                    }
+                    IterState::Padding(hash_size) => {
                         self.state = IterState::Done;
-                        return Some(&bytes[start..]);
+
+                        if hash_size % 8 != 0 {
+                            let pad_size = 8 - hash_size % 8;
+                            return Some(&self.pe.authenticode_padding[..pad_size]);
+                        }
                     }
                     IterState::Done => return None,
                 }

@@ -40,6 +40,9 @@ use log::debug;
 pub struct PE<'a> {
     /// Underlying bytes
     bytes: &'a [u8],
+    /// Padding authenticode might need
+    authenticode_padding: [u8; 7],
+    /// Sections of the PE to be excluded for authenticode checksum
     authenticode_excluded_sections: Option<authenticode::ExcludedSections>,
     /// The PE header
     pub header: header::Header,
@@ -259,6 +262,7 @@ impl<'a> PE<'a> {
         }
         Ok(PE {
             bytes,
+            authenticode_padding: [0; 7],
             authenticode_excluded_sections,
             header,
             sections,
